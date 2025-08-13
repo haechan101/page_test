@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>대선 공약집 이슈 시각화</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    :root{--gap:16px}
+    body{max-width:1200px;margin:24px auto;padding:0 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,"Malgun Gothic",Apple SD Gothic Neo,sans-serif;color:#111}
+    h1{font-size:22px;margin:0 0 6px}
+    .sub{color:#555;margin:0 0 12px}
+    .row{display:grid;grid-template-columns:1fr;gap:var(--gap)}
+    @media (min-width:900px){.row{grid-template-columns:2fr 1fr}}
+    .card{border:1px solid #e6e6e6;border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+    .controls .group{display:flex;gap:8px;align-items:center}
+    .spacer{flex:1}
+    button{border:1px solid #ddd;border-radius:10px;padding:6px 10px;background:#fff;cursor:pointer}
+    button:hover{background:#f6f6f6}
+    #line-chart,#bar-chart{width:100%;height:520px}
+    .muted{color:#666;font-size:12px}
+  </style>
+</head>
+<body>
+  <h1>대선별 주요 이슈 주목도 변화</h1>
+  <p class="sub">라인 차트를 클릭하면 해당 이슈의 상위 키워드 기여도가 갱신됩니다.</p>
+
+  <div class="card">
+    <div class="controls">
+      <div class="group" role="group" aria-label="Y축 모드">
+        <strong style="margin-right:6px">표시</strong>
+        <label><input type="radio" name="ymode" value="percent" checked> 주목도 비율(%)</label>
+        <label><input type="radio" name="ymode" value="count"> 언급 수(회)</label>
+      </div>
+      <div class="spacer"></div>
+      <button id="download-line">라인 차트 PNG 저장</button>
+    </div>
+    <div id="line-chart"></div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <div class="controls">
+        <div class="group">
+          <strong style="margin-right:6px">정렬</strong>
+          <label><input type="radio" name="sort" value="ratio" checked> 비율</label>
+          <label><input type="radio" name="sort" value="alpha"> 가나다</label>
+        </div>
+        <div class="spacer"></div>
+        <button id="download-bar">막대 차트 PNG 저장</button>
+      </div>
+      <div id="bar-chart"></div>
+      <p class="muted" id="bar-note">* 기여도 비율은 해당 공약집의 전체 언급 수 대비 각 키워드 비중입니다.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">참고 사항</h3>
+      <ul style="margin:4px 0 0 18px;line-height:1.5">
+        <li>상단 라디오 버튼으로 <b>비율/언급 수</b>를 전환할 수 있습니다.</li>
+        <li>라인 차트의 점을 클릭하면 오른쪽 막대 차트가 해당 이슈의 <b>상위 키워드</b>로 갱신됩니다.</li>
+        <li>막대 차트 정렬 기준(비율·가나다)을 바꿔보세요.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // ===== 데이터 (사용자 제공 원본) =====
+    const df = [{"index":"17대_이명박","청년":22.83,"고용":20.39,"복지":19.35,"지역":14.54,"안보":9.96,"기술":7.28,"젠더":5.65},{"index":"18대_박근혜","청년":19.9,"고용":17.01,"복지":17.05,"지역":15.8,"안보":7.23,"기술":6.16,"젠더":16.86},{"index":"19대_문재인","청년":18.37,"고용":21.7,"복지":15.0,"지역":14.69,"안보":9.97,"기술":4.13,"젠더":16.13},{"index":"20대_윤석열","청년":18.48,"고용":14.36,"복지":12.55,"지역":18.49,"안보":15.38,"기술":13.38,"젠더":7.36},{"index":"21대_이재명","청년":17.45,"고용":19.64,"복지":16.67,"지역":14.11,"안보":17.86,"기술":10.08,"젠더":4.2}];
+    const categoryCounts = {"17대_이명박": {"청년": 249, "고용": 199, "복지": 171, "지역": 123, "안보": 99, "기술": 102, "젠더": 64}, "18대_박근혜": {"청년": 334, "고용": 457, "복지": 322, "지역": 216, "안보": 114, "기술": 164, "젠더": 200}, "19대_문재인": {"청년": 304, "고용": 533, "복지": 316, "지역": 191, "안보": 103, "기술": 186, "젠더": 192}, "20대_윤석열": {"청년": 368, "고용": 347, "복지": 324, "지역": 225, "안보": 221, "기술": 614, "젠더": 143}, "21대_이재명": {"청년": 352, "고용": 415, "복지": 276, "지역": 275, "안보": 111, "기술": 712, "젠더": 111}};
+    const keywordData = {"17대_이명박": {"청년": [{"keyword": "대학", "count": 115}, {"keyword": "취업", "count": 22}, {"keyword": "공정", "count": 21}, {"keyword": "희망", "count": 18}, {"keyword": "신혼부부", "count": 17}], "고용": [{"keyword": "일자리", "count": 58}, {"keyword": "규제", "count": 32}, {"keyword": "산업", "count": 26}, {"keyword": "취업", "count": 22}, {"keyword": "경제성장", "count": 12}], "복지": [{"keyword": "복지", "count": 41}, {"keyword": "보건", "count": 20}, {"keyword": "의료", "count": 17}, {"keyword": "저소득층", "count": 13}, {"keyword": "노인", "count": 12}], "지역": [{"keyword": "주택", "count": 24}, {"keyword": "공급", "count": 18}, {"keyword": "수도권", "count": 17}, {"keyword": "농어촌", "count": 15}, {"keyword": "발전", "count": 11}], "안보": [{"keyword": "외교", "count": 20}, {"keyword": "북한", "count": 18}, {"keyword": "중국", "count": 13}, {"keyword": "협력", "count": 13}, {"keyword": "미국", "count": 7}], "기술": [{"keyword": "에너지", "count": 34}, {"keyword": "기술", "count": 14}, {"keyword": "인프라", "count": 13}, {"keyword": "혁신", "count": 11}, {"keyword": "R&D", "count": 7}], "젠더": [{"keyword": "차별", "count": 12}, {"keyword": "출산", "count": 12}, {"keyword": "여성", "count": 7}, {"keyword": "갈등", "count": 6}, {"keyword": "인권", "count": 4}]}, "18대_박근혜": {"청년": [{"keyword": "대학", "count": 130}, {"keyword": "미래", "count": 57}, {"keyword": "고립", "count": 23}, {"keyword": "청년", "count": 22}, {"keyword": "창업", "count": 17}], "고용": [{"keyword": "일자리", "count": 138}, {"keyword": "근로자", "count": 62}, {"keyword": "비정규직", "count": 45}, {"keyword": "소상공인", "count": 39}, {"keyword": "고용", "count": 24}], "복지": [{"keyword": "장애인", "count": 67}, {"keyword": "소득", "count": 51}, {"keyword": "복지", "count": 50}, {"keyword": "건강보험", "count": 21}, {"keyword": "노인", "count": 17}], "지역": [{"keyword": "농어촌", "count": 58}, {"keyword": "발전", "count": 25}, {"keyword": "지방", "count": 21}, {"keyword": "공공기관", "count": 20}, {"keyword": "수도권", "count": 17}], "안보": [{"keyword": "협력", "count": 21}, {"keyword": "외교", "count": 19}, {"keyword": "국방", "count": 14}, {"keyword": "북한", "count": 12}, {"keyword": "평화", "count": 9}], "기술": [{"keyword": "에너지", "count": 42}, {"keyword": "R&D", "count": 38}, {"keyword": "인프라", "count": 22}, {"keyword": "기술", "count": 9}, {"keyword": "혁신", "count": 9}], "젠더": [{"keyword": "여성", "count": 56}, {"keyword": "출산", "count": 25}, {"keyword": "임신", "count": 23}, {"keyword": "아이", "count": 18}, {"keyword": "성범죄", "count": 15}]}, "19대_문재인": {"청년": [{"keyword": "대학", "count": 127}, {"keyword": "청년", "count": 55}, {"keyword": "창업", "count": 24}, {"keyword": "희망", "count": 22}, {"keyword": "신혼부부", "count": 12}], "고용": [{"keyword": "일자리", "count": 180}, {"keyword": "비정규직", "count": 52}, {"keyword": "산업", "count": 33}, {"keyword": "근로자", "count": 30}, {"keyword": "소상공인", "count": 30}], "복지": [{"keyword": "복지", "count": 61}, {"keyword": "장애인", "count": 32}, {"keyword": "건강보험", "count": 22}, {"keyword": "주거", "count": 21}, {"keyword": "소득", "count": 19}], "지역": [{"keyword": "발전", "count": 23}, {"keyword": "공급", "count": 22}, {"keyword": "지자체", "count": 17}, {"keyword": "공공기관", "count": 16}, {"keyword": "균형", "count": 13}], "안보": [{"keyword": "협력", "count": 25}, {"keyword": "북한", "count": 9}, {"keyword": "남북관계", "count": 8}, {"keyword": "중국", "count": 8}, {"keyword": "외교", "count": 7}], "기술": [{"keyword": "R&D", "count": 31}, {"keyword": "혁신", "count": 28}, {"keyword": "에너지", "count": 25}, {"keyword": "기술", "count": 16}, {"keyword": "인프라", "count": 15}], "젠더": [{"keyword": "여성", "count": 27}, {"keyword": "출산", "count": 24}, {"keyword": "인권", "count": 24}, {"keyword": "저출산", "count": 18}, {"keyword": "차별", "count": 16}]}, "20대_윤석열": {"청년": [{"keyword": "대학", "count": 99}, {"keyword": "부채", "count": 56}, {"keyword": "청년", "count": 44}, {"keyword": "미래", "count": 35}, {"keyword": "희망", "count": 25}], "고용": [{"keyword": "일자리", "count": 65}, {"keyword": "산업", "count": 42}, {"keyword": "중소", "count": 31}, {"keyword": "규제", "count": 28}, {"keyword": "근로자", "count": 26}], "복지": [{"keyword": "장애인", "count": 80}, {"keyword": "돌봄", "count": 34}, {"keyword": "주거", "count": 25}, {"keyword": "복지", "count": 24}, {"keyword": "의료", "count": 17}], "지역": [{"keyword": "발전", "count": 37}, {"keyword": "주택", "count": 31}, {"keyword": "공급", "count": 25}, {"keyword": "수도권", "count": 24}, {"keyword": "지자체", "count": 16}], "안보": [{"keyword": "협력", "count": 42}, {"keyword": "외교", "count": 30}, {"keyword": "미국", "count": 16}, {"keyword": "비핵화", "count": 14}, {"keyword": "안보", "count": 13}], "기술": [{"keyword": "디지털", "count": 143}, {"keyword": "AI", "count": 56}, {"keyword": "플랫폼", "count": 49}, {"keyword": "기술", "count": 47}, {"keyword": "혁신", "count": 43}], "젠더": [{"keyword": "돌봄", "count": 34}, {"keyword": "여성", "count": 14}, {"keyword": "갈등", "count": 11}, {"keyword": "아이", "count": 10}, {"keyword": "성범죄", "count": 8}]}, "21대_이재명": {"청년": [{"keyword": "대학", "count": 89}, {"keyword": "청년", "count": 68}, {"keyword": "희망", "count": 37}, {"keyword": "미래", "count": 24}, {"keyword": "차세대", "count": 17}], "고용": [{"keyword": "소상공인", "count": 72}, {"keyword": "산업", "count": 67}, {"keyword": "스타트업", "count": 38}, {"keyword": "규제", "count": 34}, {"keyword": "근로자", "count": 26}], "복지": [{"keyword": "장애인", "count": 35}, {"keyword": "돌봄", "count": 32}, {"keyword": "노인", "count": 21}, {"keyword": "고령화", "count": 20}, {"keyword": "취약계층", "count": 19}], "지역": [{"keyword": "공공기관", "count": 47}, {"keyword": "지자체", "count": 41}, {"keyword": "공급", "count": 37}, {"keyword": "발전", "count": 27}, {"keyword": "주택", "count": 22}], "안보": [{"keyword": "협력", "count": 36}, {"keyword": "평화", "count": 22}, {"keyword": "방산", "count": 7}, {"keyword": "국방", "count": 7}, {"keyword": "안보", "count": 6}], "기술": [{"keyword": "AI", "count": 189}, {"keyword": "R&D", "count": 59}, {"keyword": "디지털", "count": 51}, {"keyword": "혁신", "count": 50}, {"keyword": "인프라", "count": 46}], "젠더": [{"keyword": "돌봄", "count": 32}, {"keyword": "여성", "count": 14}, {"keyword": "인권", "count": 8}, {"keyword": "육아휴직", "count": 8}, {"keyword": "갈등", "count": 7}]}};
+
+    const colorMap = {"복지":"#1f77b4","고용":"#ff7f0e","청년":"#2ca02c","지역":"#9467bd","젠더":"#e377c2","안보":"#d62728","기술":"#8c564b"};
+    const categories = Object.keys(df[0]).filter(k=>k!=="index");
+    const elections = df.map(r=>r.index);
+
+    // 현재 상태
+    let yMode = 'percent'; // 'percent' | 'count'
+    let barSort = 'ratio';  // 'ratio' | 'count' | 'alpha'
+    let lastSel = null;     // {cand, category}
+
+    function makeLineTraces(){
+      return categories.map(category=>{
+        const xs = elections;
+        const ys = df.map(row => yMode==='percent' ? row[category] : (categoryCounts[row.index]?.[category]||0));
+        const cds = df.map(row => {
+          const cand = row.index;
+          const count = (categoryCounts[cand] && categoryCounts[cand][category]) || 0;
+          const pct = row[category];
+          return [cand, category, count, pct];
+        });
+        const col = colorMap[category] || '#888';
+        return {
+          x: xs, y: ys, mode: 'lines+markers', name: category,
+          line: {color: col}, marker: {color: col}, customdata: cds,
+          hovertemplate: "%{customdata[0]} · %{customdata[1]}<br>" + (yMode==='percent' ? "주목도: %{y:.2f}%" : "언급: %{y}회") + "<extra></extra>"
+        };
+      });
+    }
+
+    function drawLine(){
+      const traces = makeLineTraces();
+      const layout = {
+        title: '대선별 주요 이슈 주목도 변화',
+        yaxis: { title: yMode==='percent' ? '주목도 비율 (%)' : '언급 수 (회)' },
+        hovermode: 'closest',
+        legend: {orientation:'v', x:1.02, xanchor:'left', y:1},
+        margin: { t:60, r:150, l:60, b:60 }
+      };
+      return Plotly.newPlot('line-chart', traces, layout, {responsive:true, displaylogo:false}).then(gd => {
+        if (gd.removeAllListeners) gd.removeAllListeners('plotly_click');
+        gd.on('plotly_click', ev => {
+          const [cand, category] = ev.points[0].customdata;
+          lastSel = {cand, category};
+          renderBar(cand, category);
+        });
+      });
+    }
+
+    function renderBar(cand, category){
+      const items = (keywordData[cand] && keywordData[cand][category]) || [];
+      if(!items.length){
+        Plotly.newPlot('bar-chart', [], {title:`[${cand}] '${category}' 데이터 없음`});
+        return;
+      }
+      const totalCat = (categoryCounts[cand] && categoryCounts[cand][category]) || 1;
+      const top = items.slice().sort((a,b)=>b.count-a.count).slice(0,10);
+      const sorter = { ratio:(a,b)=> (b.count/totalCat) - (a.count/totalCat), count:(a,b)=> b.count-a.count, alpha:(a,b)=> a.keyword.localeCompare(b.keyword,'ko') }[barSort];
+      top.sort(sorter);
+
+      const keywords = top.map(d=>d.keyword);
+      const counts = top.map(d=>d.count);
+      const ratios  = counts.map(c=> c/totalCat);
+      const col = colorMap[category] || '#888';
+
+      Plotly.newPlot('bar-chart', [{ x: keywords, y: ratios, type: 'bar', marker:{color: col}, customdata: counts, hovertemplate: '<b>%{x}</b><br>언급: %{customdata}회<br>비율: %{y:.1%}<extra></extra>' }], { title: `[${cand}] '${category}' 키워드 기여도`, xaxis:{title:'키워드'}, yaxis:{title:'비율 (해당 이슈 전체 대비)', tickformat:'.0%'}, margin:{t:60, r:40, l:60, b:80} }, {responsive:true, displaylogo:false});
+    }
+
+    function init(){
+      drawLine().then(()=>{
+        const last = df[df.length-1];
+        const bestCat = categories.slice().sort((a,b)=> last[b]-last[a])[0];
+        lastSel = {cand:last.index, category:bestCat};
+        renderBar(last.index, bestCat);
+      });
+    }
+
+    init();
+
+    // 상호작용
+    document.querySelectorAll('input[name="ymode"]').forEach(r => r.addEventListener('change', e => {
+      yMode = e.target.value; drawLine().then(()=>{ const sel = lastSel || {cand: df[df.length-1].index, category: categories[0]}; renderBar(sel.cand, sel.category); });
+    }));
+
+    document.querySelectorAll('input[name="sort"]').forEach(r => r.addEventListener('change', e => {
+      barSort = e.target.value; const sel = lastSel || {cand: df[df.length-1].index, category: categories[0]}; renderBar(sel.cand, sel.category);
+    }));
+
+    document.getElementById('download-line').addEventListener('click', ()=>{
+      Plotly.downloadImage('line-chart', {format:'png', filename:'대선_이슈_라인'});
+    });
+    document.getElementById('download-bar').addEventListener('click', ()=>{
+      Plotly.downloadImage('bar-chart', {format:'png', filename:'대선_이슈_키워드'});
+    });
+  </script>
+</body>
+</html>
